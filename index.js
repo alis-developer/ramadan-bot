@@ -4,7 +4,7 @@ import { Low } from "lowdb";
 import { JSONFile } from "lowdb/node";
 
 // ====== НАСТРОЙКИ ======
-const BOT_TOKEN = "8468701098:AAGGGusodS2eE3dWxEDs4Bo8uzd3ya7yGbU"; // export BOT_TOKEN="xxx"
+const BOT_TOKEN = process.env.BOT_TOKEN; // обязательно через env
 if (!BOT_TOKEN) {
   console.error("❌ Укажи BOT_TOKEN в env: export BOT_TOKEN='xxx'");
   process.exit(1);
