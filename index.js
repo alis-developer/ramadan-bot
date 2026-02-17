@@ -5,6 +5,7 @@ import timezone from "dayjs/plugin/timezone.js";
 import admin from "firebase-admin";
 import cron from "node-cron";
 import { FieldValue } from "firebase-admin/firestore";
+import http from "http";
 
 // ========= TIMEZONE =========
 dayjs.extend(utc);
@@ -583,3 +584,19 @@ cron.schedule(
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
+bot.launch();
+console.log("🤖 Bot started");
+
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
+// ===== HEALTH SERVER FOR RENDER =====
+const PORT = process.env.PORT || 10000;
+
+http
+  .createServer((req, res) => {
+    res.writeHead(200);
+    res.end("ok");
+  })
+  .listen(PORT, () => console.log("🌐 Health server on", PORT));
