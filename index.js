@@ -1,3 +1,4 @@
+// index.js
 import { Telegraf, Markup } from "telegraf";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc.js";
@@ -22,7 +23,9 @@ if (!BOT_TOKEN) {
 }
 
 const RAMADAN_START = process.env.RAMADAN_START || "2026-02-18"; // YYYY-MM-DD
-const ramadanStart = RAMADAN_START ? dayjs.tz(RAMADAN_START, TZ).startOf("day") : null;
+const ramadanStart = RAMADAN_START
+  ? dayjs.tz(RAMADAN_START, TZ).startOf("day")
+  : null;
 
 const SA_B64 = process.env.FIREBASE_SERVICE_ACCOUNT_B64;
 if (!SA_B64) {
@@ -31,7 +34,9 @@ if (!SA_B64) {
 }
 
 // ========= FIREBASE INIT =========
-const serviceAccount = JSON.parse(Buffer.from(SA_B64, "base64").toString("utf8"));
+const serviceAccount = JSON.parse(
+  Buffer.from(SA_B64, "base64").toString("utf8")
+);
 if (!admin.apps.length) {
   admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 }
@@ -59,7 +64,13 @@ function getRamadanDay() {
 function emptyDay() {
   return {
     quranPages: 0,
-    mosque: { fajr: false, dhuhr: false, asr: false, maghrib: false, isha: false },
+    mosque: {
+      fajr: false,
+      dhuhr: false,
+      asr: false,
+      maghrib: false,
+      isha: false,
+    },
     taraweeh: false,
     tahajjud: false,
     istighfar: 0,
@@ -78,7 +89,8 @@ function progressBar(value, max, width = 10) {
 
 function mosqueCount(d) {
   const m = d.mosque || {};
-  return ["fajr", "dhuhr", "asr", "maghrib", "isha"].filter((k) => !!m[k]).length;
+  return ["fajr", "dhuhr", "asr", "maghrib", "isha"].filter((k) => !!m[k])
+    .length;
 }
 
 function completedCount(d, goals) {
@@ -112,14 +124,27 @@ function formatTodayReport(d, goals) {
   return [
     `${title}`,
     ``,
-    `📖 Коран: ${d.quranPages} стр ${d.quranPages >= g.quranPages ? "✅" : "❌"} (цель ${g.quranPages})`,
-    `🕌 Мечеть: ${mosqueCount(d)}/5 ${progressBar(mosqueCount(d), 5)} ${mosqueCount(d) === 5 ? "✅" : "❌"}`,
+    `📖 Коран: ${d.quranPages} стр ${
+      d.quranPages >= g.quranPages ? "✅" : "❌"
+    } (цель ${g.quranPages})`,
+    `🕌 Мечеть: ${mosqueCount(d)}/5 ${progressBar(
+      mosqueCount(d),
+      5
+    )} ${mosqueCount(d) === 5 ? "✅" : "❌"}`,
     `🌙 Таравих: ${d.taraweeh ? "✅" : "❌"}`,
     `🕯 Тахаджуд: ${d.tahajjud ? "✅" : "❌"}`,
-    `🤍 Истигфар: ${d.istighfar} ${d.istighfar >= g.istighfar ? "✅" : "❌"} (цель ${g.istighfar})`,
-    `📿 Зикр: ${d.dhikr} ${d.dhikr >= g.dhikr ? "✅" : "❌"} (цель ${g.dhikr})`,
-    `💰 Садака: ${d.sadaqaRub}₽ ${d.sadaqaRub >= g.sadaqaRub ? "✅" : "❌"} (цель ${g.sadaqaRub}₽)`,
-    `🤲 Дуа: ${d.duaCount} ${d.duaCount >= g.duaCount ? "✅" : "❌"} (цель ${g.duaCount})`,
+    `🤍 Истигфар: ${d.istighfar} ${
+      d.istighfar >= g.istighfar ? "✅" : "❌"
+    } (цель ${g.istighfar})`,
+    `📿 Зикр: ${d.dhikr} ${d.dhikr >= g.dhikr ? "✅" : "❌"} (цель ${
+      g.dhikr
+    })`,
+    `💰 Садака: ${d.sadaqaRub}₽ ${
+      d.sadaqaRub >= g.sadaqaRub ? "✅" : "❌"
+    } (цель ${g.sadaqaRub}₽)`,
+    `🤲 Дуа: ${d.duaCount} ${
+      d.duaCount >= g.duaCount ? "✅" : "❌"
+    } (цель ${g.duaCount})`,
     ``,
     `⭐️ Выполнено: ${done}/8 ${heatEmoji(done)}`,
   ].join("\n");
@@ -143,12 +168,55 @@ function remainingText(d, goals) {
   if (rem.sadaqaRub > 0) lines.push(`💰 Садака: осталось ${rem.sadaqaRub}₽`);
   if (rem.duaCount > 0) lines.push(`🤲 Дуа: осталось ${rem.duaCount}`);
 
-  return lines.length ? lines.join("\n") : "✅ Всё по целям выполнено (кроме намазов/таравиха — без напоминаний).";
+  return lines.length
+    ? lines.join("\n")
+    : "✅ Всё по целям выполнено (кроме намазов/таравиха — без напоминаний).";
+}
+
+// ========= STATS HELPERS =========
+function computeStreakFromKeys(keys, daysMap, goals) {
+  const active = (d) => completedCount(d, goals) >= 1;
+
+  // текущий стрик (сегодня назад)
+  let streak = 0;
+  let cur = now().startOf("day");
+  for (let i = 0; i < 400; i++) {
+    const k = cur.format("YYYY-MM-DD");
+    const d = daysMap[k];
+    if (d && active(d)) streak++;
+    else break;
+    cur = cur.subtract(1, "day");
+  }
+
+  // лучший стрик
+  let best = 0;
+  let run = 0;
+  for (const k of keys) {
+    const d = daysMap[k];
+    if (d && active(d)) run++;
+    else run = 0;
+    best = Math.max(best, run);
+  }
+
+  return { streak, best };
+}
+
+function formatHeatmap(keys, daysMap, goals, take = 14) {
+  const last = keys.slice(-take);
+  if (!last.length) return "—";
+  return last
+    .map((k) => {
+      const d = daysMap[k];
+      const done = d ? completedCount(d, goals) : 0;
+      return heatEmoji(done);
+    })
+    .join("");
 }
 
 // ========= FIRESTORE PATHS =========
 const userRef = (userId) => db.collection("users").doc(String(userId));
-const dayRef = (userId, dateKey) => userRef(userId).collection("days").doc(dateKey);
+const dayRef = (userId, dateKey) =>
+  userRef(userId).collection("days").doc(dateKey);
 
 async function ensureUserAndDay(userId, chatId) {
   const uRef = userRef(userId);
@@ -191,12 +259,6 @@ async function getUser(userId) {
   return snap.exists ? snap.data() : null;
 }
 
-async function setToday(userId, patch) {
-  const dRef = dayRef(userId, todayKey());
-  await dRef.set({ ...patch, updatedAt: Date.now() }, { merge: true });
-  return (await dRef.get()).data();
-}
-
 async function resetToday(userId) {
   const dRef = dayRef(userId, todayKey());
   await dRef.set(emptyDay(), { merge: false });
@@ -205,7 +267,10 @@ async function resetToday(userId) {
 
 async function incrementToday(userId, field, amount) {
   const dRef = dayRef(userId, todayKey());
-  await dRef.set({ [field]: FieldValue.increment(amount), updatedAt: Date.now() }, { merge: true });
+  await dRef.set(
+    { [field]: FieldValue.increment(amount), updatedAt: Date.now() },
+    { merge: true }
+  );
   return (await dRef.get()).data();
 }
 
@@ -232,11 +297,35 @@ async function toggleBool(userId, field) {
   return (await dRef.get()).data();
 }
 
+async function deleteUserAllData(userId) {
+  // удаляем подколлекцию days батчами
+  const daysCol = userRef(userId).collection("days");
+  const snap = await daysCol.get();
+
+  let batch = db.batch();
+  let count = 0;
+
+  for (const doc of snap.docs) {
+    batch.delete(doc.ref);
+    count++;
+    if (count >= 450) {
+      await batch.commit();
+      batch = db.batch();
+      count = 0;
+    }
+  }
+  if (count > 0) await batch.commit();
+
+  // удаляем сам документ пользователя
+  await userRef(userId).delete().catch(() => {});
+}
+
 // ========= UI =========
 function mainKeyboard() {
   return Markup.keyboard([
     ["✅ Отметить сегодня", "📊 Статистика"],
-    ["♻️ Сбросить сегодня"],
+    ["🎯 Цели", "♻️ Сбросить сегодня"],
+    ["🧹 Полная очистка"],
   ]).resize();
 }
 
@@ -255,8 +344,14 @@ function todayInlineKeyboard(d) {
     ],
     [Markup.button.callback(p("isha", "Иша"), "mosque_isha")],
     [
-      Markup.button.callback(`${d.taraweeh ? "✅" : "☐"} 🌙 Таравих`, "toggle_taraweeh"),
-      Markup.button.callback(`${d.tahajjud ? "✅" : "☐"} 🕯 Тахаджуд`, "toggle_tahajjud"),
+      Markup.button.callback(
+        `${d.taraweeh ? "✅" : "☐"} 🌙 Таравих`,
+        "toggle_taraweeh"
+      ),
+      Markup.button.callback(
+        `${d.tahajjud ? "✅" : "☐"} 🕯 Тахаджуд`,
+        "toggle_tahajjud"
+      ),
     ],
     [
       Markup.button.callback("📖 Коран (+стр)", "edit_quran"),
@@ -279,11 +374,31 @@ const setupState = new Map(); // userId -> step
 const inputState = new Map(); // userId -> field
 
 const SETUP_STEPS = [
-  { key: "quranPages", label: "📖 Сколько страниц Корана в день?", def: DEFAULT_GOALS.quranPages },
-  { key: "istighfar", label: "🤍 Истигфар в день (кол-во)?", def: DEFAULT_GOALS.istighfar },
-  { key: "dhikr", label: "📿 Зикр в день (кол-во)?", def: DEFAULT_GOALS.dhikr },
-  { key: "sadaqaRub", label: "💰 Садака в день (₽)?", def: DEFAULT_GOALS.sadaqaRub },
-  { key: "duaCount", label: "🤲 Дуа в день (раз)?", def: DEFAULT_GOALS.duaCount },
+  {
+    key: "quranPages",
+    label: "📖 Сколько страниц Корана в день?",
+    def: DEFAULT_GOALS.quranPages,
+  },
+  {
+    key: "istighfar",
+    label: "🤍 Истигфар в день (кол-во)?",
+    def: DEFAULT_GOALS.istighfar,
+  },
+  {
+    key: "dhikr",
+    label: "📿 Зикр в день (кол-во)?",
+    def: DEFAULT_GOALS.dhikr,
+  },
+  {
+    key: "sadaqaRub",
+    label: "💰 Садака в день (₽)?",
+    def: DEFAULT_GOALS.sadaqaRub,
+  },
+  {
+    key: "duaCount",
+    label: "🤲 Дуа в день (раз)?",
+    def: DEFAULT_GOALS.duaCount,
+  },
 ];
 
 function setupPrompt(step) {
@@ -294,7 +409,7 @@ function setupPrompt(step) {
 async function startSetup(ctx, userId) {
   setupState.set(userId, 0);
   await ctx.reply(
-    "Настроим твои цели на Рамадан ✅\n(потом можно будет добавить команду /goals для изменения)",
+    "Настроим твои цели на Рамадан ✅\n(в любой момент можно снова: /goals)",
     mainKeyboard()
   );
   return ctx.reply(setupPrompt(0));
@@ -328,7 +443,6 @@ bot.start(async (ctx) => {
 
   const { user } = await ensureUserAndDay(userId, chatId);
 
-  // если целей нет — запускаем мастер
   if (!user?.setupDone) {
     return startSetup(ctx, userId);
   }
@@ -341,6 +455,23 @@ bot.start(async (ctx) => {
     `Ассаляму алейкум!\nТрекер поклонения.\n${hint}\n\nНажми "✅ Отметить сегодня".`,
     mainKeyboard()
   );
+});
+
+// ===== goals (редактирование целей) =====
+bot.command("goals", async (ctx) => {
+  const userId = String(ctx.from.id);
+  await ensureUserAndDay(userId, ctx.chat?.id);
+
+  // сбрасываем текущий шаг мастера и запускаем заново
+  setupState.set(userId, 0);
+
+  // помечаем, что настройка не завершена (пока не пройдёт мастер)
+  await userRef(userId).set({ setupDone: false }, { merge: true });
+
+  return ctx.reply(
+    "🎯 Редактирование целей.\nДавай заново зададим твои цели (или «по умолчанию»).",
+    mainKeyboard()
+  ).then(() => ctx.reply(setupPrompt(0)));
 });
 
 // ===== setup handler =====
@@ -358,7 +489,9 @@ bot.on("text", async (ctx, next) => {
   } else {
     const num = Number(text.replace(",", "."));
     if (Number.isNaN(num) || num < 0) {
-      return ctx.reply("Введите число (0 или больше), или напишите: по умолчанию");
+      return ctx.reply(
+        "Введите число (0 или больше), или напишите: по умолчанию"
+      );
     }
     val = Math.round(num);
   }
@@ -403,16 +536,152 @@ bot.command("reset_today", async (ctx) => {
   await ctx.reply("♻️ Сегодняшние отметки сброшены.", mainKeyboard());
 });
 
+// ===== /wipe (полная очистка) с подтверждением =====
+bot.command("wipe", async (ctx) => {
+  return ctx.reply(
+    "🧹 Полная очистка удалит ВСЕ твои данные (цели + история дней) без возможности восстановления.\n\nТочно удалить?",
+    Markup.inlineKeyboard([
+      [Markup.button.callback("✅ Да, удалить всё", "wipe_yes")],
+      [Markup.button.callback("❌ Нет", "wipe_no")],
+    ])
+  );
+});
+
+bot.action("wipe_yes", async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = String(ctx.from.id);
+
+  // удаляем всё и просим заново пройти цели
+  await deleteUserAllData(userId);
+
+  setupState.delete(userId);
+  inputState.delete(userId);
+
+  await ctx.reply("✅ Всё удалено. Запусти /start и задай цели заново.", mainKeyboard());
+});
+
+bot.action("wipe_no", async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.reply("Ок, ничего не удаляю ✅", mainKeyboard());
+});
+
+// ===== stats =====
+bot.command("stats", async (ctx) => {
+  const userId = String(ctx.from.id);
+
+  const snap = await userRef(userId).collection("days").get();
+  if (snap.empty) {
+    return ctx.reply(
+      "Пока нет отметок. Нажми ✅ Отметить сегодня.",
+      mainKeyboard()
+    );
+  }
+
+  const daysMap = {};
+  snap.forEach((doc) => (daysMap[doc.id] = doc.data()));
+
+  const keys = Object.keys(daysMap).sort();
+  const totalDays = keys.length;
+
+  const goals = await getGoalsForUser(userId);
+
+  const days = keys.map((k) => daysMap[k]);
+  const sum = (fn) => days.reduce((a, d) => a + fn(d), 0);
+
+  const totalQuran = sum((d) => Number(d.quranPages || 0));
+  const totalMosque = sum((d) => mosqueCount(d));
+  const totalTaraweeh = sum((d) => (d.taraweeh ? 1 : 0));
+  const totalTahajjud = sum((d) => (d.tahajjud ? 1 : 0));
+  const totalIst = sum((d) => Number(d.istighfar || 0));
+  const totalDhikr = sum((d) => Number(d.dhikr || 0));
+  const totalSadaqa = sum((d) => Number(d.sadaqaRub || 0));
+  const totalDua = sum((d) => Number(d.duaCount || 0));
+
+  const doneCounts = days.map((d) => completedCount(d, goals));
+  const perfectDays = doneCounts.filter((x) => x === 8).length;
+  const avgDone = (
+    doneCounts.reduce((a, b) => a + b, 0) / totalDays
+  ).toFixed(1);
+
+  const hit = (pred) => days.filter(pred).length;
+
+  const quranHit = hit((d) => (d.quranPages || 0) >= goals.quranPages);
+  const mosqueHit = hit((d) => mosqueCount(d) === 5);
+  const taraHit = hit((d) => !!d.taraweeh);
+  const tahaHit = hit((d) => !!d.tahajjud);
+  const istHit = hit((d) => (d.istighfar || 0) >= goals.istighfar);
+  const dhikrHit = hit((d) => (d.dhikr || 0) >= goals.dhikr);
+  const sadHit = hit((d) => (d.sadaqaRub || 0) >= goals.sadaqaRub);
+  const duaHit = hit((d) => (d.duaCount || 0) >= goals.duaCount);
+
+  const { streak, best } = computeStreakFromKeys(keys, daysMap, goals);
+
+  // лучший день
+  let bestDayKey = keys[0];
+  let bestDayScore = -1;
+  for (const k of keys) {
+    const sc = completedCount(daysMap[k], goals);
+    if (sc > bestDayScore) {
+      bestDayScore = sc;
+      bestDayKey = k;
+    }
+  }
+
+  const heat = formatHeatmap(keys, daysMap, goals, 14);
+
+  const text = [
+    `📊 Статистика (дней с отметками: ${totalDays})`,
+    ``,
+    `🔥 Стрик: ${streak} | Лучший стрик: ${best}`,
+    `✅ Идеальные дни (8/8): ${perfectDays}`,
+    `⭐️ Среднее выполнение: ${avgDone}/8`,
+    `🏆 Лучший день: ${bestDayKey} (${bestDayScore}/8)`,
+    ``,
+    `🗓 Последние 14 дней: ${heat}`,
+    ``,
+    `— Итоги —`,
+    `📖 Коран: ${totalQuran} стр (ср. ${(totalQuran / totalDays).toFixed(
+      1
+    )}/день)`,
+    `🕌 Мечеть: ${totalMosque} намазов (из ${totalDays * 5})`,
+    `🌙 Таравих: ${totalTaraweeh} дней`,
+    `🕯 Тахаджуд: ${totalTahajjud} дней`,
+    `🤍 Истигфар: ${totalIst} (ср. ${(totalIst / totalDays).toFixed(0)}/день)`,
+    `📿 Зикр: ${totalDhikr} (ср. ${(totalDhikr / totalDays).toFixed(0)}/день)`,
+    `💰 Садака: ${totalSadaqa}₽ (ср. ${(totalSadaqa / totalDays).toFixed(
+      0
+    )}₽/день)`,
+    `🤲 Дуа: ${totalDua} (ср. ${(totalDua / totalDays).toFixed(1)}/день)`,
+    ``,
+    `— Выполнение целей (сколько дней достигал) —`,
+    `📖 Коран ≥${goals.quranPages}: ${quranHit}/${totalDays}`,
+    `🕌 Мечеть 5/5: ${mosqueHit}/${totalDays}`,
+    `🌙 Таравих: ${taraHit}/${totalDays}`,
+    `🕯 Тахаджуд: ${tahaHit}/${totalDays}`,
+    `🤍 Истигфар ≥${goals.istighfar}: ${istHit}/${totalDays}`,
+    `📿 Зикр ≥${goals.dhikr}: ${dhikrHit}/${totalDays}`,
+    `💰 Садака ≥${goals.sadaqaRub}₽: ${sadHit}/${totalDays}`,
+    `🤲 Дуа ≥${goals.duaCount}: ${duaHit}/${totalDays}`,
+  ].join("\n");
+
+  await ctx.reply(text, mainKeyboard());
+});
+
 bot.hears("✅ Отметить сегодня", async (ctx) => {
   const userId = String(ctx.from.id);
   await ensureUserAndDay(userId, ctx.chat?.id);
 
   const d = await getToday(userId);
-  return ctx.telegram.sendMessage(ctx.chat.id, "Отмечай пункты 👇", todayInlineKeyboard(d));
+  return ctx.telegram.sendMessage(
+    ctx.chat.id,
+    "Отмечай пункты 👇",
+    todayInlineKeyboard(d)
+  );
 });
-
 bot.hears("📊 Статистика", (ctx) => ctx.reply("/stats"));
 bot.hears("♻️ Сбросить сегодня", (ctx) => ctx.reply("/reset_today"));
+bot.hears("🎯 Цели", (ctx) => ctx.reply("/goals"));
+bot.hears("🧹 Полная очистка", (ctx) => ctx.reply("/wipe"));
 
 // ===== numeric input (increment) =====
 function askNumber(ctx, field, prompt) {
@@ -428,7 +697,8 @@ bot.on("text", async (ctx, next) => {
   const raw = (ctx.message.text || "").trim().replace(",", ".");
   const num = Number(raw);
 
-  if (Number.isNaN(num) || num < 0) return ctx.reply("Введите число (0 или больше).");
+  if (Number.isNaN(num) || num < 0)
+    return ctx.reply("Введите число (0 или больше).");
 
   inputState.delete(userId);
 
@@ -441,7 +711,9 @@ bot.on("text", async (ctx, next) => {
 
 // ===== callbacks (UI fix) =====
 async function refreshInline(ctx, d) {
-  return ctx.editMessageReplyMarkup(todayInlineKeyboard(d).reply_markup).catch(() => {});
+  return ctx
+    .editMessageReplyMarkup(todayInlineKeyboard(d).reply_markup)
+    .catch(() => {});
 }
 
 bot.action("mosque_fajr", async (ctx) => {
@@ -485,27 +757,47 @@ bot.action("toggle_tahajjud", async (ctx) => {
 bot.action("edit_quran", async (ctx) => {
   await ctx.answerCbQuery();
   const goals = await getGoalsForUser(ctx.from.id);
-  return askNumber(ctx, "quranPages", `Добавь страницы Корана (суммируется). Цель ${goals.quranPages}:`);
+  return askNumber(
+    ctx,
+    "quranPages",
+    `Добавь страницы Корана (суммируется). Цель ${goals.quranPages}:`
+  );
 });
 bot.action("edit_istighfar", async (ctx) => {
   await ctx.answerCbQuery();
   const goals = await getGoalsForUser(ctx.from.id);
-  return askNumber(ctx, "istighfar", `Добавь истигфар (суммируется). Цель ${goals.istighfar}:`);
+  return askNumber(
+    ctx,
+    "istighfar",
+    `Добавь истигфар (суммируется). Цель ${goals.istighfar}:`
+  );
 });
 bot.action("edit_dhikr", async (ctx) => {
   await ctx.answerCbQuery();
   const goals = await getGoalsForUser(ctx.from.id);
-  return askNumber(ctx, "dhikr", `Добавь зикр (суммируется). Цель ${goals.dhikr}:`);
+  return askNumber(
+    ctx,
+    "dhikr",
+    `Добавь зикр (суммируется). Цель ${goals.dhikr}:`
+  );
 });
 bot.action("edit_sadaqa", async (ctx) => {
   await ctx.answerCbQuery();
   const goals = await getGoalsForUser(ctx.from.id);
-  return askNumber(ctx, "sadaqaRub", `Добавь садаку в ₽ (суммируется). Цель ${goals.sadaqaRub}₽:`);
+  return askNumber(
+    ctx,
+    "sadaqaRub",
+    `Добавь садаку в ₽ (суммируется). Цель ${goals.sadaqaRub}₽:`
+  );
 });
 bot.action("edit_dua", async (ctx) => {
   await ctx.answerCbQuery();
   const goals = await getGoalsForUser(ctx.from.id);
-  return askNumber(ctx, "duaCount", `Добавь дуа (суммируется). Цель ${goals.duaCount}:`);
+  return askNumber(
+    ctx,
+    "duaCount",
+    `Добавь дуа (суммируется). Цель ${goals.duaCount}:`
+  );
 });
 
 bot.action("show_report", async (ctx) => {
@@ -547,10 +839,13 @@ async function sendTahajjudReminder(uDoc) {
   if (!chatId) return;
 
   const d = await getToday(userId);
-  if (d.tahajjud) return; // уже отмечено
+  if (d.tahajjud) return;
 
   await bot.telegram
-    .sendMessage(chatId, "🕯 Тахаджуд: напоминание (03:00 МСК). Если встанешь — не забудь отметить ✅")
+    .sendMessage(
+      chatId,
+      "🕯 Тахаджуд: напоминание (03:00 МСК). Если встанешь — не забудь отметить ✅"
+    )
     .catch(() => {});
 }
 
@@ -558,7 +853,10 @@ async function sendTahajjudReminder(uDoc) {
 cron.schedule(
   "0 */3 * * *",
   async () => {
-    const snap = await db.collection("users").where("setupDone", "==", true).get();
+    const snap = await db
+      .collection("users")
+      .where("setupDone", "==", true)
+      .get();
     for (const doc of snap.docs) await sendReminderToUser(doc);
   },
   { timezone: TZ }
@@ -568,7 +866,10 @@ cron.schedule(
 cron.schedule(
   "0 3 * * *",
   async () => {
-    const snap = await db.collection("users").where("setupDone", "==", true).get();
+    const snap = await db
+      .collection("users")
+      .where("setupDone", "==", true)
+      .get();
     for (const doc of snap.docs) await sendTahajjudReminder(doc);
   },
   { timezone: TZ }
@@ -587,11 +888,9 @@ if (!BASE_URL) {
 const secretPath = `/telegraf/${BOT_TOKEN.split(":")[0]}`;
 
 (async () => {
-  // ставим webhook
   await bot.telegram.setWebhook(`${BASE_URL}${secretPath}`);
   console.log("🔗 Webhook set:", `${BASE_URL}${secretPath}`);
 
-  // один сервер: webhook + health
   http
     .createServer((req, res) => {
       if (req.method === "POST" && req.url === secretPath) {
@@ -601,9 +900,7 @@ const secretPath = `/telegraf/${BOT_TOKEN.split(":")[0]}`;
           try {
             const update = JSON.parse(body);
             bot.handleUpdate(update);
-          } catch (e) {
-            // ignore
-          }
+          } catch (e) {}
           res.writeHead(200);
           res.end("ok");
         });
