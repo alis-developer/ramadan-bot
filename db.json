@@ -1,61 +1,10 @@
 {
   "users": {
     "347931759": {
-      "days": {
-        "2026-02-15": {
-          "quranPages": 22,
-          "mosque": {
-            "fajr": true,
-            "dhuhr": true,
-            "asr": true,
-            "maghrib": true,
-            "isha": true
-          },
-          "taraweeh": true,
-          "tahajjud": true,
-          "istighfar": 600,
-          "dhikr": 400,
-          "sadaqaRub": 200,
-          "duaCount": 4,
-          "updatedAt": 1771364979366
-        },
-        "2026-02-16": {
-          "quranPages": 0,
-          "mosque": {
-            "fajr": true,
-            "dhuhr": true,
-            "asr": true,
-            "maghrib": true,
-            "isha": false
-          },
-          "taraweeh": true,
-          "tahajjud": true,
-          "istighfar": 700,
-          "dhikr": 0,
-          "sadaqaRub": 0,
-          "duaCount": 0,
-          "updatedAt": 1771365031183
-        },
-        "2026-02-18": {
-          "quranPages": 50,
-          "mosque": {
-            "fajr": true,
-            "dhuhr": true,
-            "asr": true,
-            "maghrib": true,
-            "isha": true
-          },
-          "taraweeh": true,
-          "tahajjud": false,
-          "istighfar": 700,
-          "dhikr": 6000,
-          "sadaqaRub": 300,
-          "duaCount": 2,
-          "updatedAt": 1771365096429
-        }
-      },
+      "days": {},
       "streak": 0,
-      "lastActive": null
+      "lastActive": null,
+      "bestStreak": 0
     }
   }
 }
