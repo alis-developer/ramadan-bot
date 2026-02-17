@@ -574,29 +574,44 @@ cron.schedule(
   { timezone: TZ }
 );
 
-// ===== run =====
-(async () => {
-  // на всякий случай чистим webhook/очередь
-  await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
-  await bot.launch();
-  console.log("🤖 Bot started");
-})();
-
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
-
-bot.launch();
-console.log("🤖 Bot started");
-
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
-
-// ===== HEALTH SERVER FOR RENDER =====
+// ===== WEBHOOK RUN (без polling) =====
 const PORT = process.env.PORT || 10000;
+const BASE_URL = process.env.BASE_URL; // https://xxx.onrender.com
 
-http
-  .createServer((req, res) => {
-    res.writeHead(200);
-    res.end("ok");
-  })
-  .listen(PORT, () => console.log("🌐 Health server on", PORT));
+if (!BASE_URL) {
+  console.error("❌ Укажи BASE_URL в env (https://your-service.onrender.com)");
+  process.exit(1);
+}
+
+// секретный путь, чтобы никто не слал фейковые апдейты
+const secretPath = `/telegraf/${BOT_TOKEN.split(":")[0]}`;
+
+(async () => {
+  // ставим webhook
+  await bot.telegram.setWebhook(`${BASE_URL}${secretPath}`);
+  console.log("🔗 Webhook set:", `${BASE_URL}${secretPath}`);
+
+  // один сервер: webhook + health
+  http
+    .createServer((req, res) => {
+      if (req.method === "POST" && req.url === secretPath) {
+        let body = "";
+        req.on("data", (chunk) => (body += chunk));
+        req.on("end", () => {
+          try {
+            const update = JSON.parse(body);
+            bot.handleUpdate(update);
+          } catch (e) {
+            // ignore
+          }
+          res.writeHead(200);
+          res.end("ok");
+        });
+        return;
+      }
+
+      res.writeHead(200);
+      res.end("ok");
+    })
+    .listen(PORT, () => console.log("🌐 Server on", PORT));
+})();
