@@ -144,7 +144,7 @@ function formatTodayReport(d) {
 function mainKeyboard() {
   return Markup.keyboard([
     ["✅ Отметить сегодня", "📊 Статистика"],
-    ["♻️ Сбросить сегодня"],
+    ["♻️ Сбросить сегодня", "🗑 Очистить всю БД"],
   ]).resize();
 }
 
@@ -384,6 +384,64 @@ bot.hears("✅ Отметить сегодня", async (ctx) => {
 });
 bot.hears("📊 Статистика", (ctx) => ctx.reply("/stats"));
 bot.hears("♻️ Сбросить сегодня", (ctx) => ctx.reply("/reset_today"));
+
+// ====== FULL DB WIPE (с подтверждением) ======
+const wipeConfirm = new Map(); // userId -> timestamp
+
+bot.hears("🗑 Очистить всю БД", async (ctx) => {
+  const userId = String(ctx.from.id);
+
+  // ставим "окно" подтверждения на 60 секунд
+  wipeConfirm.set(userId, Date.now());
+
+  return ctx.reply(
+    "⚠️ Ты точно хочешь ПОЛНОСТЬЮ очистить базу?\n" +
+      "Это удалит ВСЕ твои дни и статистику.\n\n" +
+      "Если уверен — напиши: ✅ ОЧИСТИТЬ\n" +
+      "Если передумал — напиши: отмена",
+    mainKeyboard()
+  );
+});
+
+bot.on("text", async (ctx, next) => {
+  // ВАЖНО: этот блок должен идти ПЕРЕД твоим обработчиком inputState
+  // чтобы команда очистки сработала, даже если ты ожидаешь число.
+
+  const userId = String(ctx.from.id);
+  const text = (ctx.message.text || "").trim();
+
+  // отмена подтверждения
+  if (text.toLowerCase() === "отмена") {
+    if (wipeConfirm.has(userId)) wipeConfirm.delete(userId);
+    return ctx.reply("Ок, отменил ✅", mainKeyboard());
+  }
+
+  // подтверждение очистки
+  if (text === "✅ ОЧИСТИТЬ") {
+    const ts = wipeConfirm.get(userId);
+    const fresh = ts && Date.now() - ts <= 60_000; // 60 секунд
+
+    if (!fresh) {
+      wipeConfirm.delete(userId);
+      return ctx.reply(
+        "Подтверждение истекло. Нажми 🗑 Очистить всю БД ещё раз.",
+        mainKeyboard()
+      );
+    }
+
+    // очищаем только твои данные (а не всех пользователей)
+    const user = ensureUser(userId);
+    user.days = {};
+    user.bestStreak = 0;
+
+    wipeConfirm.delete(userId);
+    await db.write();
+
+    return ctx.reply("🗑 Готово. Твоя база очищена полностью.", mainKeyboard());
+  }
+
+  return next();
+});
 
 // ====== INPUT numbers (СУММИРОВАНИЕ) ======
 bot.on("text", async (ctx, next) => {
