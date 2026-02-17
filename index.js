@@ -457,87 +457,29 @@ bot.start(async (ctx) => {
   );
 });
 
-// ===== goals (редактирование целей) =====
-bot.command("goals", async (ctx) => {
+// ====== ОБЩИЕ HANDLERS (чтобы кнопки не писали /команды) ======
+async function handleGoals(ctx) {
   const userId = String(ctx.from.id);
   await ensureUserAndDay(userId, ctx.chat?.id);
 
-  // сбрасываем текущий шаг мастера и запускаем заново
   setupState.set(userId, 0);
-
-  // помечаем, что настройка не завершена (пока не пройдёт мастер)
   await userRef(userId).set({ setupDone: false }, { merge: true });
 
-  return ctx.reply(
+  await ctx.reply(
     "🎯 Редактирование целей.\nДавай заново зададим твои цели (или «по умолчанию»).",
     mainKeyboard()
-  ).then(() => ctx.reply(setupPrompt(0)));
-});
+  );
+  return ctx.reply(setupPrompt(0));
+}
 
-// ===== setup handler =====
-bot.on("text", async (ctx, next) => {
+async function handleResetToday(ctx) {
   const userId = String(ctx.from.id);
-  const step = setupState.get(userId);
-  if (step === undefined) return next();
-
-  const text = (ctx.message.text || "").trim().toLowerCase();
-  const s = SETUP_STEPS[step];
-
-  let val;
-  if (text === "по умолчанию") {
-    val = s.def;
-  } else {
-    const num = Number(text.replace(",", "."));
-    if (Number.isNaN(num) || num < 0) {
-      return ctx.reply(
-        "Введите число (0 или больше), или напишите: по умолчанию"
-      );
-    }
-    val = Math.round(num);
-  }
-
-  await saveGoal(userId, s.key, val);
-
-  const nextStep = step + 1;
-  if (nextStep >= SETUP_STEPS.length) {
-    setupState.delete(userId);
-    await userRef(userId).set({ setupDone: true }, { merge: true });
-
-    const goals = await getGoalsForUser(userId);
-    return ctx.reply(
-      "✅ Готово! Твои цели сохранены.\n\n" +
-        `📖 Коран: ${goals.quranPages} стр\n` +
-        `🤍 Истигфар: ${goals.istighfar}\n` +
-        `📿 Зикр: ${goals.dhikr}\n` +
-        `💰 Садака: ${goals.sadaqaRub}₽\n` +
-        `🤲 Дуа: ${goals.duaCount}\n\n` +
-        `Теперь нажми "✅ Отметить сегодня".`,
-      mainKeyboard()
-    );
-  }
-
-  setupState.set(userId, nextStep);
-  return ctx.reply(setupPrompt(nextStep));
-});
-
-// ===== commands/buttons =====
-bot.command("today", async (ctx) => {
-  const userId = String(ctx.from.id);
-  const d = await getToday(userId);
-  const goals = await getGoalsForUser(userId);
-
-  await ctx.reply("Отмечай пункты 👇", todayInlineKeyboard(d));
-  await ctx.reply(formatTodayReport(d, goals), mainKeyboard());
-});
-
-bot.command("reset_today", async (ctx) => {
-  const userId = String(ctx.from.id);
+  await ensureUserAndDay(userId, ctx.chat?.id);
   await resetToday(userId);
-  await ctx.reply("♻️ Сегодняшние отметки сброшены.", mainKeyboard());
-});
+  return ctx.reply("♻️ Сегодняшние отметки сброшены.", mainKeyboard());
+}
 
-// ===== /wipe (полная очистка) с подтверждением =====
-bot.command("wipe", async (ctx) => {
+async function handleWipe(ctx) {
   return ctx.reply(
     "🧹 Полная очистка удалит ВСЕ твои данные (цели + история дней) без возможности восстановления.\n\nТочно удалить?",
     Markup.inlineKeyboard([
@@ -545,29 +487,11 @@ bot.command("wipe", async (ctx) => {
       [Markup.button.callback("❌ Нет", "wipe_no")],
     ])
   );
-});
+}
 
-bot.action("wipe_yes", async (ctx) => {
-  await ctx.answerCbQuery();
+async function handleStats(ctx) {
   const userId = String(ctx.from.id);
-
-  // удаляем всё и просим заново пройти цели
-  await deleteUserAllData(userId);
-
-  setupState.delete(userId);
-  inputState.delete(userId);
-
-  await ctx.reply("✅ Всё удалено. Запусти /start и задай цели заново.", mainKeyboard());
-});
-
-bot.action("wipe_no", async (ctx) => {
-  await ctx.answerCbQuery();
-  await ctx.reply("Ок, ничего не удаляю ✅", mainKeyboard());
-});
-
-// ===== stats =====
-bot.command("stats", async (ctx) => {
-  const userId = String(ctx.from.id);
+  await ensureUserAndDay(userId, ctx.chat?.id);
 
   const snap = await userRef(userId).collection("days").get();
   if (snap.empty) {
@@ -664,7 +588,75 @@ bot.command("stats", async (ctx) => {
     `🤲 Дуа ≥${goals.duaCount}: ${duaHit}/${totalDays}`,
   ].join("\n");
 
-  await ctx.reply(text, mainKeyboard());
+  return ctx.reply(text, mainKeyboard());
+}
+
+// ===== commands => handlers =====
+bot.command("goals", handleGoals);
+bot.command("reset_today", handleResetToday);
+bot.command("wipe", handleWipe);
+bot.command("stats", handleStats);
+
+// ✅ КНОПКИ меню => handlers (вместо ctx.reply("/..."))
+bot.hears("🎯 Цели", handleGoals);
+bot.hears("♻️ Сбросить сегодня", handleResetToday);
+bot.hears("🧹 Полная очистка", handleWipe);
+bot.hears("📊 Статистика", handleStats);
+
+// ===== setup handler =====
+bot.on("text", async (ctx, next) => {
+  const userId = String(ctx.from.id);
+  const step = setupState.get(userId);
+  if (step === undefined) return next();
+
+  const text = (ctx.message.text || "").trim().toLowerCase();
+  const s = SETUP_STEPS[step];
+
+  let val;
+  if (text === "по умолчанию") {
+    val = s.def;
+  } else {
+    const num = Number(text.replace(",", "."));
+    if (Number.isNaN(num) || num < 0) {
+      return ctx.reply(
+        "Введите число (0 или больше), или напишите: по умолчанию"
+      );
+    }
+    val = Math.round(num);
+  }
+
+  await saveGoal(userId, s.key, val);
+
+  const nextStep = step + 1;
+  if (nextStep >= SETUP_STEPS.length) {
+    setupState.delete(userId);
+    await userRef(userId).set({ setupDone: true }, { merge: true });
+
+    const goals = await getGoalsForUser(userId);
+    return ctx.reply(
+      "✅ Готово! Твои цели сохранены.\n\n" +
+        `📖 Коран: ${goals.quranPages} стр\n` +
+        `🤍 Истигфар: ${goals.istighfar}\n` +
+        `📿 Зикр: ${goals.dhikr}\n` +
+        `💰 Садака: ${goals.sadaqaRub}₽\n` +
+        `🤲 Дуа: ${goals.duaCount}\n\n` +
+        `Теперь нажми "✅ Отметить сегодня".`,
+      mainKeyboard()
+    );
+  }
+
+  setupState.set(userId, nextStep);
+  return ctx.reply(setupPrompt(nextStep));
+});
+
+// ===== other commands/buttons =====
+bot.command("today", async (ctx) => {
+  const userId = String(ctx.from.id);
+  const d = await getToday(userId);
+  const goals = await getGoalsForUser(userId);
+
+  await ctx.reply("Отмечай пункты 👇", todayInlineKeyboard(d));
+  await ctx.reply(formatTodayReport(d, goals), mainKeyboard());
 });
 
 bot.hears("✅ Отметить сегодня", async (ctx) => {
@@ -678,10 +670,27 @@ bot.hears("✅ Отметить сегодня", async (ctx) => {
     todayInlineKeyboard(d)
   );
 });
-bot.hears("📊 Статистика", (ctx) => ctx.reply("/stats"));
-bot.hears("♻️ Сбросить сегодня", (ctx) => ctx.reply("/reset_today"));
-bot.hears("🎯 Цели", (ctx) => ctx.reply("/goals"));
-bot.hears("🧹 Полная очистка", (ctx) => ctx.reply("/wipe"));
+
+// ===== /wipe callbacks =====
+bot.action("wipe_yes", async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = String(ctx.from.id);
+
+  await deleteUserAllData(userId);
+
+  setupState.delete(userId);
+  inputState.delete(userId);
+
+  await ctx.reply(
+    "✅ Всё удалено. Запусти /start и задай цели заново.",
+    mainKeyboard()
+  );
+});
+
+bot.action("wipe_no", async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.reply("Ок, ничего не удаляю ✅", mainKeyboard());
+});
 
 // ===== numeric input (increment) =====
 function askNumber(ctx, field, prompt) {
