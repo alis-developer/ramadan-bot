@@ -345,7 +345,8 @@ function mainKeyboard() {
   return Markup.keyboard([
     ["✅ Отметить сегодня", "📊 Статистика"],
     ["🎯 Цели", "♻️ Сбросить сегодня"],
-    ["🌅 Азкары", "🧹 Полная очистка"],
+    ["🌅 Азкары", "✍️ Отзыв / Идея"],
+    ["🧹 Полная очистка"],
   ]).resize();
 }
 
@@ -411,6 +412,7 @@ const bot = new Telegraf(BOT_TOKEN);
 // мастер настройки целей
 const setupState = new Map(); // userId -> step
 const inputState = new Map(); // userId -> field
+const feedbackState = new Map(); // userId -> true (ждем текст отзыва)
 
 const SETUP_STEPS = [
   {
@@ -668,6 +670,16 @@ bot.hears("🌅 Азкары", async (ctx) => {
     ])
   );
 });
+bot.hears("✍️ Отзыв / Идея", async (ctx) => {
+  const userId = String(ctx.from.id);
+  feedbackState.set(userId, true);
+
+  return ctx.reply(
+    "✍️ Напиши отзыв / идею / пожелание одним сообщением.\n\nЧтобы отменить — напиши: Отмена",
+    mainKeyboard()
+  );
+});
+
 
 // ===== setup handler =====
 bot.on("text", async (ctx, next) => {
@@ -757,6 +769,40 @@ bot.action("wipe_no", async (ctx) => {
   await ctx.answerCbQuery();
   await ctx.reply("Ок, ничего не удаляю ✅", mainKeyboard());
 });
+
+bot.on("text", async (ctx, next) => {
+  const userId = String(ctx.from.id);
+
+  // если не в режиме отзыва — пропускаем дальше
+  if (!feedbackState.get(userId)) return next();
+
+  const text = (ctx.message.text || "").trim();
+  const lower = text.toLowerCase();
+
+  // отмена
+  if (["отмена", "cancel", "❌ отмена"].includes(lower)) {
+    feedbackState.delete(userId);
+    return ctx.reply("Ок, отменил ✅", mainKeyboard());
+  }
+
+  // сохраняем в Firestore
+  feedbackState.delete(userId);
+
+  await db.collection("feedback").add({
+    userId,
+    chatId: ctx.chat?.id ?? null,
+    username: ctx.from?.username ?? null,
+    firstName: ctx.from?.first_name ?? null,
+    lastName: ctx.from?.last_name ?? null,
+    text,
+    tz: TZ,
+    dateKey: todayKey(),
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  return ctx.reply("Спасибо! Я сохранил ✅", mainKeyboard());
+});
+
 
 // ===== numeric input (increment) =====
 function askNumber(ctx, field, prompt) {
