@@ -345,7 +345,7 @@ function mainKeyboard() {
   return Markup.keyboard([
     ["✅ Отметить сегодня", "📊 Статистика"],
     ["🎯 Цели", "♻️ Сбросить сегодня"],
-    ["🧹 Полная очистка"],
+    ["🌅 Азкары", "🧹 Полная очистка"],
   ]).resize();
 }
 
@@ -659,6 +659,15 @@ bot.hears("🎯 Цели", handleGoals);
 bot.hears("♻️ Сбросить сегодня", handleResetToday);
 bot.hears("🧹 Полная очистка", handleWipe);
 bot.hears("📊 Статистика", handleStats);
+bot.hears("🌅 Азкары", async (ctx) => {
+  return ctx.reply(
+    "Выбери, что открыть:",
+    Markup.inlineKeyboard([
+      [Markup.button.url("🌅 Утренние азкары", "https://azkar.ru/category/morning")],
+      [Markup.button.url("🌃 Вечерние азкары", "https://azkar.ru/category/evening")],
+    ])
+  );
+});
 
 // ===== setup handler =====
 bot.on("text", async (ctx, next) => {
