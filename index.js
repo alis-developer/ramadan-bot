@@ -51,6 +51,9 @@ const DEFAULT_GOALS = {
   duaCount: 3,
 };
 
+// ✅ всего чек-пунктов (цели + галочки)
+const TOTAL_CHECKS = 11;
+
 // ========= HELPERS =========
 const now = () => dayjs().tz(TZ);
 const todayKey = () => now().format("YYYY-MM-DD");
@@ -73,6 +76,12 @@ function emptyDay() {
     },
     taraweeh: false,
     tahajjud: false,
+
+    // ✅ НОВОЕ
+    azkarMorning: false,
+    azkarEvening: false,
+    duha: false,
+
     istighfar: 0,
     dhikr: 0,
     sadaqaRub: 0,
@@ -100,6 +109,12 @@ function completedCount(d, goals) {
     mosqueCount(d) === 5,
     !!d.taraweeh,
     !!d.tahajjud,
+
+    // ✅ НОВОЕ (как таравих/тахаджуд)
+    !!d.azkarMorning,
+    !!d.azkarEvening,
+    !!d.duha,
+
     (d.istighfar || 0) >= (g.istighfar || 0),
     (d.dhikr || 0) >= (g.dhikr || 0),
     (d.sadaqaRub || 0) >= (g.sadaqaRub || 0),
@@ -109,8 +124,9 @@ function completedCount(d, goals) {
 }
 
 function heatEmoji(done) {
-  if (done >= 7) return "🟩";
-  if (done >= 4) return "🟨";
+  // под 11 пунктов
+  if (done >= 9) return "🟩";
+  if (done >= 6) return "🟨";
   return "🟥";
 }
 
@@ -133,6 +149,12 @@ function formatTodayReport(d, goals) {
     )} ${mosqueCount(d) === 5 ? "✅" : "❌"}`,
     `🌙 Таравих: ${d.taraweeh ? "✅" : "❌"}`,
     `🕯 Тахаджуд: ${d.tahajjud ? "✅" : "❌"}`,
+
+    // ✅ НОВОЕ
+    `🌅 Утренние азкары: ${d.azkarMorning ? "✅" : "❌"}`,
+    `🌙 Вечерние азкары: ${d.azkarEvening ? "✅" : "❌"}`,
+    `☀️ Духьа: ${d.duha ? "✅" : "❌"}`,
+
     `🤍 Истигфар: ${d.istighfar} ${
       d.istighfar >= g.istighfar ? "✅" : "❌"
     } (цель ${g.istighfar})`,
@@ -146,7 +168,7 @@ function formatTodayReport(d, goals) {
       d.duaCount >= g.duaCount ? "✅" : "❌"
     } (цель ${g.duaCount})`,
     ``,
-    `⭐️ Выполнено: ${done}/8 ${heatEmoji(done)}`,
+    `⭐️ Выполнено: ${done}/${TOTAL_CHECKS} ${heatEmoji(done)}`,
   ].join("\n");
 }
 
@@ -163,6 +185,9 @@ function remainingText(d, goals) {
 
   const lines = [];
   if (rem.quranPages > 0) lines.push(`📖 Коран: осталось ${rem.quranPages} стр`);
+  if (!d.azkarMorning) lines.push(`🌅 Утренние азкары: не отмечено`);
+  if (!d.azkarEvening) lines.push(`🌙 Вечерние азкары: не отмечено`);
+  if (!d.duha) lines.push(`☀️ Духьа: не отмечено`);
   if (rem.istighfar > 0) lines.push(`🤍 Истигфар: осталось ${rem.istighfar}`);
   if (rem.dhikr > 0) lines.push(`📿 Зикр: осталось ${rem.dhikr}`);
   if (rem.sadaqaRub > 0) lines.push(`💰 Садака: осталось ${rem.sadaqaRub}₽`);
@@ -177,7 +202,6 @@ function remainingText(d, goals) {
 function computeStreakFromKeys(keys, daysMap, goals) {
   const active = (d) => completedCount(d, goals) >= 1;
 
-  // текущий стрик (сегодня назад)
   let streak = 0;
   let cur = now().startOf("day");
   for (let i = 0; i < 400; i++) {
@@ -188,7 +212,6 @@ function computeStreakFromKeys(keys, daysMap, goals) {
     cur = cur.subtract(1, "day");
   }
 
-  // лучший стрик
   let best = 0;
   let run = 0;
   for (const k of keys) {
@@ -274,7 +297,6 @@ async function incrementToday(userId, field, amount) {
   return (await dRef.get()).data();
 }
 
-// ✅ фикс: обновляем вложенный объект mosque целиком (чтобы UI всегда совпадал)
 async function toggleMosque(userId, key) {
   const dRef = dayRef(userId, todayKey());
   const snap = await dRef.get();
@@ -298,7 +320,6 @@ async function toggleBool(userId, field) {
 }
 
 async function deleteUserAllData(userId) {
-  // удаляем подколлекцию days батчами
   const daysCol = userRef(userId).collection("days");
   const snap = await daysCol.get();
 
@@ -316,7 +337,6 @@ async function deleteUserAllData(userId) {
   }
   if (count > 0) await batch.commit();
 
-  // удаляем сам документ пользователя
   await userRef(userId).delete().catch(() => {});
 }
 
@@ -353,6 +373,25 @@ function todayInlineKeyboard(d) {
         "toggle_tahajjud"
       ),
     ],
+
+    // ✅ НОВЫЕ КНОПКИ (как таравих/тахаджуд)
+    [
+      Markup.button.callback(
+        `${d.azkarMorning ? "✅" : "☐"} 🌅 Утренние азкары`,
+        "toggle_azkar_morning"
+      ),
+      Markup.button.callback(
+        `${d.azkarEvening ? "✅" : "☐"} 🌙 Вечерние азкары`,
+        "toggle_azkar_evening"
+      ),
+    ],
+    [
+      Markup.button.callback(
+        `${d.duha ? "✅" : "☐"} ☀️ Духьа`,
+        "toggle_duha"
+      ),
+    ],
+
     [
       Markup.button.callback("📖 Коран (+стр)", "edit_quran"),
       Markup.button.callback("🤍 Истигфар (+)", "edit_istighfar"),
@@ -457,7 +496,7 @@ bot.start(async (ctx) => {
   );
 });
 
-// ====== ОБЩИЕ HANDLERS (чтобы кнопки не писали /команды) ======
+// ====== ОБЩИЕ HANDLERS ======
 async function handleGoals(ctx) {
   const userId = String(ctx.from.id);
   await ensureUserAndDay(userId, ctx.chat?.id);
@@ -516,13 +555,19 @@ async function handleStats(ctx) {
   const totalMosque = sum((d) => mosqueCount(d));
   const totalTaraweeh = sum((d) => (d.taraweeh ? 1 : 0));
   const totalTahajjud = sum((d) => (d.tahajjud ? 1 : 0));
+
+  // ✅ НОВОЕ
+  const totalAzkarMorning = sum((d) => (d.azkarMorning ? 1 : 0));
+  const totalAzkarEvening = sum((d) => (d.azkarEvening ? 1 : 0));
+  const totalDuha = sum((d) => (d.duha ? 1 : 0));
+
   const totalIst = sum((d) => Number(d.istighfar || 0));
   const totalDhikr = sum((d) => Number(d.dhikr || 0));
   const totalSadaqa = sum((d) => Number(d.sadaqaRub || 0));
   const totalDua = sum((d) => Number(d.duaCount || 0));
 
   const doneCounts = days.map((d) => completedCount(d, goals));
-  const perfectDays = doneCounts.filter((x) => x === 8).length;
+  const perfectDays = doneCounts.filter((x) => x === TOTAL_CHECKS).length;
   const avgDone = (
     doneCounts.reduce((a, b) => a + b, 0) / totalDays
   ).toFixed(1);
@@ -533,6 +578,12 @@ async function handleStats(ctx) {
   const mosqueHit = hit((d) => mosqueCount(d) === 5);
   const taraHit = hit((d) => !!d.taraweeh);
   const tahaHit = hit((d) => !!d.tahajjud);
+
+  // ✅ НОВОЕ
+  const azkarMorningHit = hit((d) => !!d.azkarMorning);
+  const azkarEveningHit = hit((d) => !!d.azkarEvening);
+  const duhaHit = hit((d) => !!d.duha);
+
   const istHit = hit((d) => (d.istighfar || 0) >= goals.istighfar);
   const dhikrHit = hit((d) => (d.dhikr || 0) >= goals.dhikr);
   const sadHit = hit((d) => (d.sadaqaRub || 0) >= goals.sadaqaRub);
@@ -557,9 +608,9 @@ async function handleStats(ctx) {
     `📊 Статистика (дней с отметками: ${totalDays})`,
     ``,
     `🔥 Стрик: ${streak} | Лучший стрик: ${best}`,
-    `✅ Идеальные дни (8/8): ${perfectDays}`,
-    `⭐️ Среднее выполнение: ${avgDone}/8`,
-    `🏆 Лучший день: ${bestDayKey} (${bestDayScore}/8)`,
+    `✅ Идеальные дни (${TOTAL_CHECKS}/${TOTAL_CHECKS}): ${perfectDays}`,
+    `⭐️ Среднее выполнение: ${avgDone}/${TOTAL_CHECKS}`,
+    `🏆 Лучший день: ${bestDayKey} (${bestDayScore}/${TOTAL_CHECKS})`,
     ``,
     `🗓 Последние 14 дней: ${heat}`,
     ``,
@@ -570,6 +621,9 @@ async function handleStats(ctx) {
     `🕌 Мечеть: ${totalMosque} намазов (из ${totalDays * 5})`,
     `🌙 Таравих: ${totalTaraweeh} дней`,
     `🕯 Тахаджуд: ${totalTahajjud} дней`,
+    `🌅 Утренние азкары: ${totalAzkarMorning} дней`,
+    `🌙 Вечерние азкары: ${totalAzkarEvening} дней`,
+    `☀️ Духьа: ${totalDuha} дней`,
     `🤍 Истигфар: ${totalIst} (ср. ${(totalIst / totalDays).toFixed(0)}/день)`,
     `📿 Зикр: ${totalDhikr} (ср. ${(totalDhikr / totalDays).toFixed(0)}/день)`,
     `💰 Садака: ${totalSadaqa}₽ (ср. ${(totalSadaqa / totalDays).toFixed(
@@ -582,6 +636,9 @@ async function handleStats(ctx) {
     `🕌 Мечеть 5/5: ${mosqueHit}/${totalDays}`,
     `🌙 Таравих: ${taraHit}/${totalDays}`,
     `🕯 Тахаджуд: ${tahaHit}/${totalDays}`,
+    `🌅 Утренние азкары: ${azkarMorningHit}/${totalDays}`,
+    `🌙 Вечерние азкары: ${azkarEveningHit}/${totalDays}`,
+    `☀️ Духьа: ${duhaHit}/${totalDays}`,
     `🤍 Истигфар ≥${goals.istighfar}: ${istHit}/${totalDays}`,
     `📿 Зикр ≥${goals.dhikr}: ${dhikrHit}/${totalDays}`,
     `💰 Садака ≥${goals.sadaqaRub}₽: ${sadHit}/${totalDays}`,
@@ -597,7 +654,7 @@ bot.command("reset_today", handleResetToday);
 bot.command("wipe", handleWipe);
 bot.command("stats", handleStats);
 
-// ✅ КНОПКИ меню => handlers (вместо ctx.reply("/..."))
+// ✅ КНОПКИ меню => handlers
 bot.hears("🎯 Цели", handleGoals);
 bot.hears("♻️ Сбросить сегодня", handleResetToday);
 bot.hears("🧹 Полная очистка", handleWipe);
@@ -763,6 +820,23 @@ bot.action("toggle_tahajjud", async (ctx) => {
   return refreshInline(ctx, d);
 });
 
+// ✅ НОВЫЕ TOGGLE (логика 1-в-1 как таравих/тахаджуд)
+bot.action("toggle_azkar_morning", async (ctx) => {
+  await ctx.answerCbQuery();
+  const d = await toggleBool(ctx.from.id, "azkarMorning");
+  return refreshInline(ctx, d);
+});
+bot.action("toggle_azkar_evening", async (ctx) => {
+  await ctx.answerCbQuery();
+  const d = await toggleBool(ctx.from.id, "azkarEvening");
+  return refreshInline(ctx, d);
+});
+bot.action("toggle_duha", async (ctx) => {
+  await ctx.answerCbQuery();
+  const d = await toggleBool(ctx.from.id, "duha");
+  return refreshInline(ctx, d);
+});
+
 bot.action("edit_quran", async (ctx) => {
   await ctx.answerCbQuery();
   const goals = await getGoalsForUser(ctx.from.id);
@@ -858,7 +932,6 @@ async function sendTahajjudReminder(uDoc) {
     .catch(() => {});
 }
 
-// каждые 3 часа (в МСК), без намазов/таравиха
 cron.schedule(
   "0 */3 * * *",
   async () => {
@@ -871,7 +944,6 @@ cron.schedule(
   { timezone: TZ }
 );
 
-// тахаджуд строго в 03:00 МСК
 cron.schedule(
   "0 3 * * *",
   async () => {
@@ -886,14 +958,13 @@ cron.schedule(
 
 // ===== WEBHOOK RUN (без polling) =====
 const PORT = process.env.PORT || 10000;
-const BASE_URL = process.env.BASE_URL; // https://xxx.onrender.com
+const BASE_URL = process.env.BASE_URL;
 
 if (!BASE_URL) {
   console.error("❌ Укажи BASE_URL в env (https://your-service.onrender.com)");
   process.exit(1);
 }
 
-// секретный путь, чтобы никто не слал фейковые апдейты
 const secretPath = `/telegraf/${BOT_TOKEN.split(":")[0]}`;
 
 (async () => {
